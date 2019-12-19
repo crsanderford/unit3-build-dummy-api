@@ -2,7 +2,7 @@ from decouple import config
 import requests
 import random
 import json
-from flask import Flask
+from flask import Flask, jsonify
 import pandas as pd
 
 
@@ -35,7 +35,8 @@ def dummy_user_output(username, temp_dummy):
     dummyframe = pd.DataFrame(temp_dummy)
     avg_tox = (dummyframe.groupby('username').toxicity.mean().loc[username])
     sum_tox = dummyframe.groupby('username').toxicity.sum().loc[username]
-    top_ten_tox = dummyframe[(dummyframe['username'] == username)].sort_values('toxicity', ascending=False).head(10)[['comment', 'toxicity','comment_id']].values.tolist()
+    top_ten_tox_list = dummyframe[(dummyframe['username'] == username)].sort_values('toxicity', ascending=False).head(10)[['comment', 'toxicity','comment_id']].values.tolist()
+    top_ten_tox = [dict(zip(tuple(['comment','toxicity','comment_id']), tuple(ii))) for ii in top_ten_tox_list]
 
     label_tuple = tuple(['username','avg_tox','total_tox','top_ten_tox'])
     data_tuple =  tuple([username, float(avg_tox), int(sum_tox), top_ten_tox])
@@ -56,12 +57,12 @@ def create_app():
     @app.route('/dummyfeed')
     def dummyfeed():
 
-        return json.dumps(temp_dummy)
+        return jsonify(temp_dummy)
 
     @app.route('/dummyuser/<username>')
     def dummyuser(username):
 
-        return json.dumps(dummy_user_output(username, temp_dummy))
+        return jsonify(dummy_user_output(username, temp_dummy))
 
 
     return app
