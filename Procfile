@@ -1,0 +1,1 @@
+web: gunicorn dummyapi:APP -t 120
