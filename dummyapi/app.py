@@ -1,47 +1,14 @@
+import csv
 from decouple import config
-import requests
-import random
 import json
 from flask import Flask, jsonify
 import pandas as pd
+import sqlite3
+from sqlalchemy import func
 
-
-users = ['Austen','Connor','Khaled','Elisabeth','Tony','Micah','Daniel']
-
-def dummy_output():
-    dummy_output = []
-
-    for ii in range(0,100):
-        username = users[random.randint(0, len(users)-1)]
-        comment = pork_ipsum = requests.get('https://baconipsum.com/api/?type=all-meat&sentences=1&start-with-lorem=1').json()[0][:100]
-        comment_id = ii+1
-        toxicity = round(random.uniform(0.0,100.0))
-
-        label_tuple = tuple(['username','comment','comment_id','toxicity'])
-        comment_tuple = tuple([username, comment, comment_id, toxicity])
-
-        dummy_output.append(dict(zip(label_tuple,comment_tuple)))
-
-    return dummy_output
-
-temp_dummy = dummy_output()
-
-def dummy_user_output(username, temp_dummy):
-
-    valid_users = set([dummy_entry['username'] for dummy_entry in temp_dummy])
-    if username not in valid_users:
-        return 'username not in valid users - check /dummyfeed for a valid user.'
-
-    dummyframe = pd.DataFrame(temp_dummy)
-    avg_tox = (dummyframe.groupby('username').toxicity.mean().loc[username])
-    sum_tox = dummyframe.groupby('username').toxicity.sum().loc[username]
-    top_ten_tox_list = dummyframe[(dummyframe['username'] == username)].sort_values('toxicity', ascending=False).head(10)[['comment', 'toxicity','comment_id']].values.tolist()
-    top_ten_tox = [dict(zip(tuple(['comment','toxicity','comment_id']), tuple(ii))) for ii in top_ten_tox_list]
-
-    label_tuple = tuple(['username','avg_tox','total_tox','top_ten_tox'])
-    data_tuple =  tuple([username, float(avg_tox), int(sum_tox), top_ten_tox])
-
-    return dict(zip(label_tuple,data_tuple))
+from .models import DB, Comment
+from .make_dummies import dummy_output, dummy_user_output
+from .load_comments import load_from_csv, insert_comment
 
 
     
@@ -49,12 +16,16 @@ def dummy_user_output(username, temp_dummy):
 def create_app():
     app = Flask(__name__)
     app.config['ENV'] = config('ENV')
+    app.config['SQLALCHEMY_DATABASE_URI'] = config('DATABASE_URL')
+    DB.init_app(app)
+
+    """temp_dummy = dummy_output()"""
 
     @app.route('/')
     def index():
         return "...hello."
 
-    @app.route('/dummyfeed')
+    """@app.route('/dummyfeed')
     def dummyfeed():
 
         return jsonify(temp_dummy)
@@ -62,7 +33,50 @@ def create_app():
     @app.route('/dummyuser/<username>')
     def dummyuser(username):
 
-        return jsonify(dummy_user_output(username, temp_dummy))
+        return jsonify(dummy_user_output(username, temp_dummy))"""
+
+    @app.route('/dbload')
+    def dbload():
+        data = load_from_csv()
+        for d in data:
+            insert_comment(d)
+        DB.session.commit()
+        return "loaded!"
+
+    @app.route('/feed')
+    def feed():
+        comment_objs = Comment.query.all()
+        comments = [tuple([obj.comment_id, obj.text, obj.user, obj.toxicity]) for obj in comment_objs]
+        comments = [dict(zip(tuple(['id','text','user','tox']),obj)) for obj in comments]
+
+        return jsonify(comments)
+
+    @app.route('/user/<username>')
+    def user(username):
+        comment_objs = Comment.query.filter(Comment.user == username).order_by(Comment.toxicity.desc())
+        comments = [tuple([obj.comment_id, obj.text, obj.toxicity]) for obj in comment_objs]
+        comments = [dict(zip(tuple(['id','text','tox']),obj)) for obj in comments]
+
+        total = Comment.query.with_entities(
+             func.sum(Comment.toxicity).label("mySum")
+         ).filter_by(
+             user=username
+         ).first()
+
+        avg = Comment.query.with_entities(
+             func.sum(Comment.toxicity).label("myAvg")
+         ).filter_by(
+             user=username
+         ).first()
+
+        return jsonify(dict(zip(tuple(['username','avg_tox','total_tox','top_ten_tox']),
+        tuple([username,float(total.mySum),float(avg.myAvg),comments[:10]]))))
+
+    @app.route('/reset')
+    def reset():
+        DB.drop_all()
+        DB.create_all()
+        return "database reset."
 
 
     return app
