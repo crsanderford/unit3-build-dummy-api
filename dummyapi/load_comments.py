@@ -2,6 +2,7 @@ import csv
 from .models import DB, Comment
 
 def load_from_csv():
+    """loads a .csv as a list of tuples, drops the header."""
     with open('hackernews_comments.csv', encoding='utf-8') as f:
         data = [tuple(line) for line in csv.reader(f)]
     data = data[1:]
