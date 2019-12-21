@@ -63,7 +63,7 @@ def create_app():
 
         toxrank_result = DB.session.execute(f"""SELECT tox_rank FROM (
         SELECT user, mean,  RANK () OVER (ORDER BY mean DESC) as tox_rank FROM (
-        SELECT user, AVG(toxicity) as mean FROM comment GROUP BY user) AS mean_toxes) WHERE user = "{username}";""")
+        SELECT user, AVG(toxicity) as mean FROM comment GROUP BY user) AS mean_toxes) AS tox_ranks WHERE user = "{username}";""")
         toxrank_rows = [x for x in toxrank_result]
         toxrank = [x.items() for x in toxrank_rows][0][0][1]
 
