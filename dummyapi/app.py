@@ -32,38 +32,47 @@ def create_app():
         DB.session.commit()
         return "loaded!"
 
+    @app.route('/smallload')
+    def smallload():
+        """loads 50 rows of HackerNews data from a local .csv file."""
+        data = load_from_csv()
+        for i in range(0,50):
+            insert_comment(data[i])
+        DB.session.commit()
+        return "small loaded!"
+
     @app.route('/feed')
     def feed():
         """returns a JSON of all the comments in the database."""
         comment_objs = Comment.query.all()
-        comments = [tuple([obj.comment_id, obj.text, obj.user, obj.toxicity]) for obj in comment_objs]
-        comments = [dict(zip(tuple(['id','text','user','tox']),obj)) for obj in comments]
+        comments = [tuple([obj.comment_id, obj.text, obj.author, obj.toxicity]) for obj in comment_objs]
+        comments = [dict(zip(tuple(['id','text','author','tox']),obj)) for obj in comments]
 
         return jsonify(comments)
 
-    @app.route('/user/<username>')
-    def user(username):
-        """returns a JSON containing a user's average and total toxicity score, their toxicity rank,
+    @app.route('/author/<username>')
+    def author(username):
+        """returns a JSON containing a comment author's average and total toxicity score, their toxicity rank,
         and their ten most toxic comments."""
-        comment_objs = Comment.query.filter(Comment.user == username).order_by(Comment.toxicity.desc()).limit(10)
+        comment_objs = Comment.query.filter(Comment.author == username).order_by(Comment.toxicity.desc()).limit(10)
         comments = [tuple([obj.comment_id, obj.text, obj.toxicity]) for obj in comment_objs]
         comments = [dict(zip(tuple(['id','text','tox']),obj)) for obj in comments]
 
         total = Comment.query.with_entities(
              func.sum(Comment.toxicity).label("Sum")
          ).filter_by(
-             user=username
+             author=username
          ).first()
 
         avg = Comment.query.with_entities(
              func.avg(Comment.toxicity).label("Avg")
          ).filter_by(
-             user=username
+             author=username
          ).first()
 
         toxrank_result = DB.session.execute(f"""SELECT tox_rank FROM (
-        SELECT user, mean,  RANK () OVER (ORDER BY mean DESC) as tox_rank FROM (
-        SELECT user, AVG(toxicity) as mean FROM comment GROUP BY user) AS mean_toxes) AS tox_ranks WHERE user = '{username}';""")
+        SELECT author, mean,  RANK () OVER (ORDER BY mean DESC) as tox_rank FROM (
+        SELECT author, AVG(toxicity) as mean FROM comment GROUP BY author) AS mean_toxes) AS tox_ranks WHERE author = '{username}';""")
         toxrank_rows = [x for x in toxrank_result]
         toxrank = [x.items() for x in toxrank_rows][0][0][1]
 
