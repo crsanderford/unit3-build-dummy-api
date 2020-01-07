@@ -1,7 +1,7 @@
 import csv
 from decouple import config
 import json
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import pandas as pd
 import sqlite3
 from sqlalchemy import func
@@ -41,7 +41,7 @@ def create_app():
         DB.session.commit()
         return "small loaded!"
 
-    @app.route('/feed')
+    @app.route('/feed', methods=['GET'])
     def feed():
         """returns a JSON of all the comments in the database."""
         comment_objs = Comment.query.all()
@@ -50,34 +50,43 @@ def create_app():
 
         return jsonify(comments)
 
-    @app.route('/author/<username>')
-    def author(username):
+    @app.route('/author', methods=['POST'])
+    def authors():
         """returns a JSON containing a comment author's average and total toxicity score, their toxicity rank,
         and their ten most toxic comments."""
-        comment_objs = Comment.query.filter(Comment.author == username).order_by(Comment.toxicity.desc()).limit(10)
+
+        content = request.get_json(force=True)
+        author = content['author']
+
+        """returns a JSON containing a comment author's average and total toxicity score, their toxicity rank,
+        and their ten most toxic comments."""
+        comment_objs = Comment.query.filter(Comment.author == author).order_by(Comment.toxicity.desc()).limit(10)
         comments = [tuple([obj.comment_id, obj.text, obj.toxicity]) for obj in comment_objs]
         comments = [dict(zip(tuple(['id','text','tox']),obj)) for obj in comments]
 
         total = Comment.query.with_entities(
              func.sum(Comment.toxicity).label("Sum")
          ).filter_by(
-             author=username
+             author=author
          ).first()
 
         avg = Comment.query.with_entities(
              func.avg(Comment.toxicity).label("Avg")
          ).filter_by(
-             author=username
+             author=author
          ).first()
 
         toxrank_result = DB.session.execute(f"""SELECT tox_rank FROM (
         SELECT author, mean,  RANK () OVER (ORDER BY mean DESC) as tox_rank FROM (
-        SELECT author, AVG(toxicity) as mean FROM comment GROUP BY author) AS mean_toxes) AS tox_ranks WHERE author = '{username}';""")
+        SELECT author, AVG(toxicity) as mean FROM comment GROUP BY author) AS mean_toxes) AS tox_ranks WHERE author = '{author}';""")
         toxrank_rows = [x for x in toxrank_result]
         toxrank = [x.items() for x in toxrank_rows][0][0][1]
 
-        return jsonify(dict(zip(tuple(['username','avg_tox','total_tox','tox_rank','top_ten_tox']),
-        tuple([username,float(avg.Avg),float(total.Sum),int(toxrank),comments]))))
+        send_back = dict(zip(tuple(['author','avg_tox','total_tox','tox_rank','top_ten_tox']),
+        tuple([author,float(avg.Avg),float(total.Sum),int(toxrank),comments])))
+
+
+        return jsonify(send_back)
 
 
     @app.route('/reset')
