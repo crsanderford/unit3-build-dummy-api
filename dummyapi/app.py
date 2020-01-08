@@ -2,6 +2,7 @@ import csv
 from decouple import config
 import json
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 import pandas as pd
 import sqlite3
 from sqlalchemy import func
@@ -15,6 +16,9 @@ from .load_comments import load_from_csv, insert_comment
 
 def create_app():
     app = Flask(__name__)
+    CORS(app)
+
+
     app.config['ENV'] = config('ENV')
     app.config['SQLALCHEMY_DATABASE_URI'] = config('DATABASE_URL')
     DB.init_app(app)
