@@ -9,7 +9,7 @@ from sqlalchemy import func
 
 from .models import DB, Comment
 from .make_dummies import dummy_output, dummy_user_output
-from .load_comments import load_from_csv, insert_comment
+from .load_comments import load_from_csv, load_into_df, add_df_prediction, insert_comments_from_df, insert_comment, insert_comment_with_model
 
 
     
@@ -23,9 +23,14 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = config('DATABASE_URL')
     DB.init_app(app)
 
+    # yes, this is hacky - but Flask has issues with loading/running a model under a decorator.
+    # something about threading, I think?
+    dataframe = load_into_df()
+    dataframe = add_df_prediction(dataframe)
+
     @app.route('/')
     def index():
-        return "...hello."
+        return "The not-so-dummy DS API for Saltiest Hackers team 2."
 
     @app.route('/dbload')
     def dbload():
@@ -34,21 +39,29 @@ def create_app():
         for d in data:
             insert_comment(d)
         DB.session.commit()
-        return "loaded!"
+        return "loaded from csv!"
+
+    @app.route('/dbload_model')
+    def dbload_model():
+        """loads HackerNews data from csv into dataframe, applies model, stores to db."""
+        
+        insert_comments_from_df(dataframe)
+        DB.session.commit()
+        return "loaded with model and dataframe!"
 
     @app.route('/smallload')
     def smallload():
         """loads 50 rows of HackerNews data from a local .csv file."""
         data = load_from_csv()
-        for i in range(0,50):
-            insert_comment(data[i])
+        for ii in range(0,50):
+            insert_comment(data[ii])
         DB.session.commit()
         return "small loaded!"
 
     @app.route('/feed', methods=['GET'])
     def feed():
-        """returns a JSON of all the comments in the database."""
-        comment_objs = Comment.query.all()
+        """returns a JSON of the 200 most toxic comments in the database, in random order."""
+        comment_objs = Comment.query.order_by(Comment.toxicity.desc()).limit(200).from_self().order_by(func.random())
         comments = [tuple([obj.comment_id, obj.text, obj.author, obj.toxicity]) for obj in comment_objs]
         comments = [dict(zip(tuple(['id','text','author','tox']),obj)) for obj in comments]
 
@@ -62,8 +75,6 @@ def create_app():
         content = request.get_json(force=True)
         author = content['author']
 
-        """returns a JSON containing a comment author's average and total toxicity score, their toxicity rank,
-        and their ten most toxic comments."""
         comment_objs = Comment.query.filter(Comment.author == author).order_by(Comment.toxicity.desc()).limit(10)
         comments = [tuple([obj.comment_id, obj.text, obj.toxicity]) for obj in comment_objs]
         comments = [dict(zip(tuple(['id','text','tox']),obj)) for obj in comments]
