@@ -25,8 +25,9 @@ def create_app():
 
     # yes, this is hacky - but Flask has issues with loading/running a model under a decorator.
     # something about threading, I think?
-    dataframe = load_into_df()
-    dataframe = add_df_prediction(dataframe)
+    # it runs, but requires using Heroku's biggest dyno, so the model output has been added to the csv.
+    """dataframe = load_into_df()
+    dataframe = add_df_prediction(dataframe)"""
 
     @app.route('/')
     def index():
@@ -34,20 +35,32 @@ def create_app():
 
     @app.route('/dbload')
     def dbload():
-        """loads HackerNews data from a local .csv file."""
+        """loads HackerNews data from a local .csv file using training toxicity scores."""
         data = load_from_csv()
         for d in data:
             insert_comment(d)
         DB.session.commit()
         return "loaded from csv!"
 
-    @app.route('/dbload_model')
+    """@app.route('/dbload_model')
     def dbload_model():
-        """loads HackerNews data from csv into dataframe, applies model, stores to db."""
+        """"""loads HackerNews data from csv into dataframe, applies model, stores to db.
+              Not in use to avoid dyno costs.""""""
         
         insert_comments_from_df(dataframe)
         DB.session.commit()
-        return "loaded with model and dataframe!"
+        return "loaded with model and dataframe!"""
+
+    @app.route('/dbload_model')
+    def dbload_model():
+        """loads HackerNews data from a local .csv file using model output."""
+        data = load_from_csv()
+        for d in data:
+            insert_comment_with_model(d)
+        DB.session.commit()
+        return "loaded from csv, using model!"
+
+    
 
     @app.route('/smallload')
     def smallload():
@@ -98,7 +111,7 @@ def create_app():
         toxrank = [x.items() for x in toxrank_rows][0][0][1]
 
         send_back = dict(zip(tuple(['author','avg_tox','total_tox','tox_rank','top_ten_tox']),
-        tuple([author,float(avg.Avg),float(total.Sum),int(toxrank),comments])))
+        tuple([author,round(float(avg.Avg),2),round(float(total.Sum),2),int(toxrank),comments])))
 
 
         return jsonify(send_back)
